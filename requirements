@@ -3,3 +3,4 @@ numpy
 geopandas
 openpyxl
 rasterio
+matplotlib
