@@ -12,4 +12,6 @@ UNDP Ceei computation of jobs per renewable energy sources
 gdalinfo -oo INTERLEAVE=PIXEL -oo OffsetsPositive -oo NrOffsets=2 -oo NoGridAxisSwap -oo BandIdentifier=none cog_globallat_10_lon_30_general-v1.5.6.tif
 ```
 
-gdal_polygonize.py ./data/population/population_AF21_2018-10-01.tif -f "GeoJSON" data.geojson
+gdal_polygonize.py ./data/population/population_AF21_2018-10-01.tif -f "GeoJSON" data.geojson 
+
+osmium tags-filter -o boundaries.osm.pbf ./data/africa-latest.osm.pbf r/boundary=administrative

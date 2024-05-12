@@ -1,5 +1,3 @@
-import rasterio
-from rasterio import features
 import numpy as np
 import pandas as pd
 import multiprocessing as mp
@@ -9,134 +7,69 @@ from shapely.geometry import Point
 import os
 import json
 import time
-files = [
-# "population_AF01_2018-10-01.tif",
-# "population_AF02_2018-10-01.tif",
-# "population_AF03_2018-10-01.tif",
-# "population_AF04_2018-10-01.tif",
-# "population_AF05_2018-10-01.tif",
-# "population_AF06_2018-10-01.tif",
-# "population_AF07_2018-10-01.tif",
-# "population_AF08_2018-10-01.tif",
-# "population_AF10_2018-10-01.tif",
-# "population_AF11_2018-10-01.tif",
-# "population_AF12_2018-10-01.tif",
-# "population_AF13_2018-10-01.tif",
-# "population_AF14_2018-10-01.tif",
-# "population_AF15_2018-10-01.tif",
-# "population_AF16_2018-10-01.tif",
-# "population_AF17_2018-10-01.tif",
-# "population_AF18_2018-10-01.tif",
-# "population_AF19_2018-10-01.tif",
-# "population_AF20_2018-10-01.tif",
-"population_AF21_2018-10-01.tif",
-# "population_AF22_2018-10-01.tif",
-# "population_AF23_2018-10-01.tif",
-# "population_AF24_2018-10-01.tif",
-# "population_AF25_2018-10-01.tif",
-# "population_AF26_2018-10-01.tif",
-# "population_AF27_2018-10-01.tif",
-# "population_AF28_2018-10-01.tif",
-]
+from osgeo import gdal
+from osgeo import gdal_array
+from itertools import chain
 
-def point_in_shape (lat, lon, lon_upper_left, lon_down_right, lat_upper_left, lat_down_right ):
-  print (lon, lat, lon_upper_left, lon_down_right, lat_upper_left, lat_down_right)
-  return lon >= lon_upper_left and lon <= lon_down_right and lat <= lat_upper_left and lat >= lat_down_right
+num_processes = mp.cpu_count()
 
-file_path = 'population.parquet'
-features_geojson = []
-# for filename in os.listdir('./data/cog'):
-#   if filename.endswith ('.tif'):
-#     f = os.path.join('./data/cog', filename)
-#     # Ensure .xml is included in allowed extensions
-for f in files:
-    print (f)
-    with rasterio.Env(CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif,.xml"):
-      with rasterio.open('./data/population/'+f) as src:
-        geotransform = src.transform
-        print (src.xy(0,0))
-        print (src.xy(src.height,src.width))
-        win_col_min, win_row_min = rasterio.transform.rowcol(geotransform, 19.85, -6.3)
-        win_col_max, win_row_max = rasterio.transform.rowcol(geotransform, 21.85, -8.3)
+def mp_func (src_path, band, row_start, row_end, col_start, col_end):
+  global GT
+  src_ds = gdal.OpenEx(src_path, gdal.OF_READONLY|gdal.OF_RASTER)
+  srcband = src_ds.GetRasterBand(band)
+  band_values = srcband.ReadAsArray(col_start,row_start,col_end-col_start,row_end-row_start)
+  Y_line = np.arange(row_start, row_end)
+  X_pixel =np.arange(col_start, col_end)
+  xv, yv = np.meshgrid(X_pixel, Y_line, indexing='ij')
 
-        # Get a windowed view of the data for the desired area
-        window = rasterio.windows.Window(win_col_min, win_row_min, win_col_max - win_col_min + 1, win_row_max - win_row_min + 1)
-      
-        data = src.read()#, window=window)
-        mask = data != 0
-        shapes = features.shapes(data, mask=mask, transform=geotransform)
-        print (list(shapes))
-        for i, (s, v) in shapes:
-          #print (value)
-          print (i, (s, v))
-        # lon_upper_left, lat_upper_left = src.xy(0,0)
-        # lon_down_right, lat_down_right = src.xy(src.height,src.width)
-        lon_upper_left, lat_upper_left = 21.85, -8.3
-        lon_down_right, lat_down_right = 19.85, -6.3
-        polygon = [
-          [lon_upper_left, lat_down_right],
-          [lon_down_right,lat_down_right],
-          [lon_down_right,lat_upper_left],
-          [lon_upper_left,lat_upper_left],
-          [lon_upper_left,lat_down_right]
-          ]
-        shapely_polygon = Polygon(polygon)
-       
-        
+  X_geo = (GT[0] + xv * GT[1] + yv * GT[2])
+  Y_geo = (GT[3] + xv * GT[4] + yv * GT[5])
 
-        shape_features = [{"geometry": shape, "properties": {"value": value}} for shape, value in shapes]
+  df = pd.DataFrame({'row_index': xv.ravel(),
+                   'col_index': yv.ravel(),
+                   'x_geo': X_geo.ravel(),
+                   'y_geo': Y_geo.ravel(),
+                   'value': band_values.ravel()})
 
-        # Create a GeoDataFrame from the features list
-        df = gpd.GeoDataFrame.from_features(features)
-        print (df)
-        # Extract rows and columns
-        # rows, cols = data.shape
+  print (df[df['value']>0])
 
-        # # Loop through each pixel and get coordinates and value
-        # df = pd.DataFrame(columns=['lon','lat','population'])
-        pc = 0
-        print (rows)
-        print (cols)
-        for row in range(rows):
-          for col in range(cols):
-            xs, ys = rasterio.transform.xy(geotransform, row, col)
-            if not np.isnan(data[row, col]):
-              df.loc[pc] = [xs,ys,data[row, col]]
-              pc = pc + 1
-              print (row,col, xs,ys,data[row, col])
-              feature = {
-                "type": "Feature",
-                "properties": {
-                  "file": f,
-                  "population": data[row, col],
-                  "tags": {},
-                  "longitude_latitude":{
-                    "type": "Point",
-                    "coordinates": [xs,ys]
-                  }
-                },
-                "geometry":{
-                  "type": "Point",
-                  "coordinates": [xs,ys]
-                }
-              }
-              features_geojson.append (feature)
-      src.close()
+#src_path = './data/landscan-global-2022.tif'
+#src_path = './data/Education_Index.tiff'
+src_path = './data/Sub_National_HDI.tiff'
+src_ds = gdal.OpenEx(src_path, gdal.OF_READONLY|gdal.OF_RASTER)
+print ("[ RASTER BAND COUNT ]: ", src_ds.RasterCount)
+GT = src_ds.GetGeoTransform()
+rows = src_ds.RasterYSize
+cols = src_ds.RasterXSize
+print (GT)
+for band in range( src_ds.RasterCount ):
+  band += 1
+  print ("[ GETTING BAND ]: ", band)
+  srcband = src_ds.GetRasterBand(band)
+  #print (srcband.GetStatistics( True, True ))
+  print (srcband.GetMetadata())
+#    stats = srcband.GetStatistics( True, True )
+#    print ("[ STATS ] =  Minimum=%.3f, Maximum=%.3f, Mean=%.3f, StdDev=%.3f" % ( \
+#            stats[0], stats[1], stats[2], stats[3] ))
 
-output_json = {
-  "type": "FeatureCollection",
-  "features": 
-    features_geojson
-}
+  # Calculate block size based on number of processes
+  block_rows, remainder = divmod(rows, num_processes)
+  block_cols, remainder = divmod(cols, num_processes)
+  # Handle remaining rows/cols for the last process
+  if remainder > 0:
+      block_rows += 1 if remainder % num_processes == 0 else remainder // num_processes
+      block_cols += 1 if remainder % num_processes == 0 else remainder // num_processes
 
-print (json.dumps(output_json))
-          
-          # if file_path.exists():
-          #   df.to_parquet(file_path, engine='fastparquet', append=True)
-          # else:
-          #   df.to_parquet(file_path, engine='fastparquet')
+  # Create tasks with block boundaries
+  tasks = []
+  for process_id in range(num_processes):
+      row_start = process_id * block_rows
+      row_end = min((process_id + 1) * block_rows, rows)
+      col_start = process_id * block_cols
+      col_end = min((process_id + 1) * block_cols, cols)
+      tasks.append((src_path, band, row_start, row_end, col_start, col_end))
 
-
-
-
-      
+  print (tasks)
+  # Use multiprocessing pool to process blocks in parallel
+  with mp.Pool(processes=num_processes) as pool:
+      results = pool.starmap(mp_func, tasks)

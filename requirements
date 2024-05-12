@@ -4,3 +4,7 @@ geopandas
 openpyxl
 rasterio
 matplotlib
+pmtiles
+osmium
+pyrosm
+#GDAL=="$(gdal-config --version).*"
