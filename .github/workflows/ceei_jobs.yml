@@ -1,6 +1,7 @@
 name: CEEI jobs release
 
-on: 
+on:
+  workflow_dispatch:
   push:
     paths:
       - africa.py
