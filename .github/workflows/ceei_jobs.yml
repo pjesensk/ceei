@@ -1,0 +1,26 @@
+name: CEEI jobs release
+
+on: 
+  push:
+    paths:
+      - africa.py
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 
+      uses: actions/setup-python@v3
+    - name: Install dependencies
+      run: |
+        apt-get update
+        apt-get install curl gdal-bin libgdal-dev 
+        python3 -m pip install --upgrade pip
+        python3 -m pip install -r requirements
+    - name: Analysing the code with pylint
+      run: |
+        pylint africa.py
+    - name: Download data for processing
+      run: |
+        echo "TODO"
