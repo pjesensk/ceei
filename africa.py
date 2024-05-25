@@ -12,10 +12,6 @@ import os
 import time
 from osgeo import gdal
 from osgeo import gdal_array
-from pyrosm import OSM
-osm = OSM("./boundaries.osm.pbf")
-
-STATISTICS_MEAN = 0.78443079274767
 
 # world administrative boundaries
 world_boundaries_path = "./data/world-administrative-boundaries.geojson"
@@ -27,7 +23,7 @@ ceei_index_path = './data/full_ceei_data2.xlsx'
 #num_processes = mp.cpu_count()
 num_processes = 32
 
-#Paralell processing function
+#Paralell processing function for raster band
 def mp_func (src_path, band, row_start, row_end, col_start, col_end):
   global GT
   global gdf_boundaries
@@ -54,64 +50,56 @@ def mp_func (src_path, band, row_start, row_end, col_start, col_end):
   )
   gdf.drop(columns=['row_index','col_index','x_geo','y_geo'],inplace = True)
   gdf = gdf.to_crs(gdf_boundaries.crs)
-  #result_gdf = gdf.sjoin (gdf_boundaries, how="right", predicate='intersects')
-  #result_gdf = result_gdf.dissolve(by='name', aggfunc='sum')
-  #print (gdf_boundaries['geometry'])
   result_arr = []
   for idx, row in gdf_boundaries.iterrows():
-    #print (col_start,idx)
     # Filter gdf2 where geometry is within geometry1
     within_gdf = gdf[row['geometry'].contains(gdf['geometry'])]    
-#     # # If there are geometries within, sum their values in column B
+    # If there are geometries within, sum their values in column B
     if not within_gdf.empty:
-      print (within_gdf)
-#     #   result_arr.append ([df_boundaries.loc[idx]['iso3_country_code'], df_boundaries.loc[idx]['admin_name'], within_gdf['value'].sum(),df_boundaries.loc[idx]['geometry_x']])
-#   #print (result_arr)
-# #  result_df = result_df.group_by(by='name',aggfunc='sum')
-#   del [[filtered_df,gdf]]
+      #we have some items lets create new entry in result array
+      r =[]
+      for col in gdf_boundaries.columns:
+        r.append (gdf_boundaries.loc[idx][col])
+      r.append (within_gdf['value'].sum())
+      result_arr.append (r)
+  del [[filtered_df,gdf]]
   gc.collect()
   return result_arr
 
+
+###############################
+# Processing part 
+###############################
 
 # Get data about admin level boundaries and select specific level
 
 world_boundaries = gpd.read_file(world_boundaries_path)
 l2_boundaries = gpd.read_file(l2_boundaries_path)
 df_education = pd.read_csv(education_share_path)
+africa_education_df = df_education[df_education['Entity'] == 'Africa']
 df_education.drop(columns=["Year"],inplace = True)
 df_education = df_education.groupby(by=['Code']).mean(numeric_only=True)
 df_ceei = pd.read_excel(open(ceei_index_path, 'rb'),sheet_name='iData')  
 
 df_boundaries = world_boundaries.merge (l2_boundaries, left_on="iso3", right_on="iso3_country_code")
-# for col in df_ceei.columns:
-#     print(col)
-
-# print (len(df_boundaries))
-# for col in df_boundaries.columns:
-#     print(col)
-
-#df_boundaries = df_boundaries.merge (df_ceei, left_on="iso3", right_on="iso3_country_code")
-
+df_boundaries = df_boundaries.merge (df_ceei, left_on="admin_name", right_on="uName")
 df_boundaries['tertiary_edu_share'] = 0
-for key, item in df_education['Combined'].items():
-  # print(key, item)
-  df_boundaries['tertiary_edu_share'] = np.where (df_boundaries['iso3_country_code'] == key, item, df_boundaries['tertiary_edu_share'])
 
-#drop unnecessary columns
-df_boundaries.drop(columns=['geometry_y','adminid','fid', 'french_short', 'iso_3166_1_alpha_2_codes','color_code','status','geo_point_2d'],inplace = True)
-#,'shapeID','uName','rwi','pvout','windspeed','eletdens','emission','accesselect','loans','netimports','ffshare','invest','emission_USD','emission_HDI'
-print (len(df_boundaries))
+df_boundaries['tertiary_edu_share'] = np.where (df_boundaries['continent'] == 'Africa' , africa_education_df['Combined'].mean(), df_boundaries['tertiary_edu_share'])
+for key, item in df_education['Combined'].items():
+  df_boundaries['tertiary_edu_share'] = np.where (df_boundaries['iso3'] == key , item, df_boundaries['tertiary_edu_share'])
+
 #convert to geodataframe
 gdf_boundaries = gpd.GeoDataFrame(
-    df_boundaries, geometry=df_boundaries['geometry_x'], crs=world_boundaries.crs
+    df_boundaries, geometry=df_boundaries['geometry_y'], crs=world_boundaries.crs
   )
-del [[world_boundaries,l2_boundaries,df_education, df_ceei]]
+#drop unnecessary columns
+gdf_boundaries.drop(columns=['geometry_y','geometry_x','adminid','fid', 'french_short', 'iso_3166_1_alpha_2_codes','color_code','status','geo_point_2d','iso3_country_code_x','shapeID'],inplace = True)
+gdf_boundaries.drop_duplicates()
+#print(len(gdf_boundaries))
+#gdf_boundaries.to_csv('combined.csv', index=False)
+del [[world_boundaries,l2_boundaries,df_education]]
 gc.collect()
-
-# for col in gdf_boundaries.columns:
-#     print(col)
-
-# print (len(gdf_boundaries))
   
 output_arr = []
 
@@ -148,8 +136,8 @@ for band in range( src_ds.RasterCount ):
       output_arr = output_arr + item
 
 print ("----------------------------------------------------")
-print (output_arr)
-columns = ['admin_name','iso3_country_code','population','geometry']
+columns = gdf_boundaries.columns.to_list()
+columns.append('population')
 df = pd.DataFrame(output_arr, columns=columns)
-df.to_csv('l3.csv', index=False)
+df.to_csv('ceei_jobs.csv', index=False)
 print ("done")
