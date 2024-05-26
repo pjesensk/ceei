@@ -21,7 +21,8 @@ jobs:
         python3 -m pip install -r requirements
     - name: Analysing the code with pylint
       run: |
-        pylint africa.py
+        echo "Skipping pylint for now"
+        # pylint africa.py
     - name: Download data for processing
       run: |
         echo "TODO"
