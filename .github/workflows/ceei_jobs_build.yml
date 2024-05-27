@@ -1,0 +1,31 @@
+name: CEEI jobs build
+
+on:
+  push:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        lfs: 'true'
+    - name: Set up Python 
+      uses: actions/setup-python@v3
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install curl gdal-bin libgdal-dev 
+        python3 -m pip install --upgrade pip
+        python3 -m pip install -r requirements
+    - name: Analysing the code with pylint
+      run: |
+        echo "Skipping pylint for now"
+        # pylint africa.py
+    - name: Build dataset
+      run: |
+        python3 africa.py
+    - name: Tag and push
+      run: |
+        echo "Not implemented yet"
+
