@@ -1,10 +1,7 @@
 name: CEEI jobs release
 
 on:
-  workflow_dispatch:
   push:
-    paths:
-      - africa.py
 
 jobs:
   release:
@@ -17,16 +14,18 @@ jobs:
       uses: actions/setup-python@v3
     - name: Install dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install curl gdal-bin libgdal-dev 
-        python3 -m pip install --upgrade pip
-        python3 -m pip install -r requirements
+        # sudo apt-get update
+        # sudo apt-get install curl gdal-bin libgdal-dev 
+        # python3 -m pip install --upgrade pip
+        # python3 -m pip install -r requirements
+        echo "Testing release not needed"
     - name: Analysing the code with pylint
       run: |
         echo "Skipping pylint for now"
         # pylint africa.py
     - name: Create Release
       uses: actions/create-release@latest
+      if: startsWith(github.ref, 'refs/tags/')
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
       with:
@@ -38,7 +37,7 @@ jobs:
         prerelease: false
     - name: Publish release
       uses: softprops/action-gh-release@v2
-      #if: startsWith(github.ref, 'refs/tags/')
+      if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
           ceei_jobs.csv
